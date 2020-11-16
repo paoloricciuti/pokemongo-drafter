@@ -1,0 +1,24 @@
+{
+  "name": "pokemongo-drafter",
+  "version": "1.0.0",
+  "description": "A website to draft Pokemon Go teams",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/paoloricciuti/pokemongo-drafter.git"
+  },
+  "keywords": [
+    "pokemon",
+    "go",
+    "draft"
+  ],
+  "author": "Paolo Ricciuti",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/paoloricciuti/pokemongo-drafter/issues"
+  },
+  "homepage": "https://github.com/paoloricciuti/pokemongo-drafter#readme"
+}
