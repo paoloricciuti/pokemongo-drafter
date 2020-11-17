@@ -16,7 +16,7 @@ const dbConfig={
     database: process.env.DB_NAME
 };
 const handleDisconnect= () => {
-    let db = mysql.createConnection(dbConfig);
+    db = mysql.createConnection(dbConfig);
     db.connect((err) => {
         if (err) {
             setTimeout(handleDisconnect, 2000);
@@ -33,6 +33,7 @@ const handleDisconnect= () => {
         }
     });
 }
+
  handleDisconnect();
 
 
