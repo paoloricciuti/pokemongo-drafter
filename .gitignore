@@ -1,2 +1,4 @@
 db.txt
-node_modules/*
+**/node_modules/*
+**/client/*
+.env
