@@ -9,7 +9,7 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-const db = mysql.createConnection({
+let db = mysql.createConnection({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
@@ -26,6 +26,12 @@ db.connect((err) => {
 db.on('error', function (err) {
     console.log('db error', err);
     if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+        db = mysql.createConnection({
+            host: process.env.DB_HOST,
+            user: process.env.DB_USER,
+            password: process.env.DB_PASSWORD,
+            database: process.env.DB_NAME
+        });
         db.connect((err) => {
             if (err) {
                 throw err;
