@@ -3,11 +3,16 @@ const mysql = require("mysql");
 const path = require('path');
 const dotenv = require("dotenv");
 const crypto = require("crypto");
-
+const httpServer= require("http");
+const socketio= require("socket.io");
+const { DH_UNABLE_TO_CHECK_GENERATOR } = require("constants");
 dotenv.config();
 
 let db;
 const app = express();
+const http= httpServer.createServer(app);
+const io=socketio(http);
+
 const port = process.env.PORT || 3000;
 const dbConfig={
     host: process.env.DB_HOST,
@@ -73,6 +78,12 @@ const sha256 = (value) => {
 const formatName = (name) => {
     return name.toLowerCase().replace(/\s/g, "-");
 }
+io.on("connection", (socket)=>{
+    console.log(socket.id);
+    socket.on("joinRoom", (data)=>{
+        io.sockets.emit("roomUpdate", users);
+    });
+});
 
 app.use(express.static(path.join(__dirname, 'client/build')));
 app.use(express.json());
@@ -130,4 +141,4 @@ app.post("/api/rooms", (req, res) => {
 app.get("*", (req, res, next) => {
     res.sendFile(path.join(__dirname + '/client/build/index.html'));
 });
-app.listen(port, () => console.log("Server is running..."));
+http.listen(port, () => console.log("Server is running..."));
