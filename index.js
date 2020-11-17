@@ -6,42 +6,38 @@ const crypto = require("crypto");
 
 dotenv.config();
 
+let db;
 const app = express();
 const port = process.env.PORT || 3000;
-
-let db = mysql.createConnection({
+const dbConfig={
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME
-});
-
-db.connect((err) => {
-    if (err) {
-        throw err;
-    }
-    console.log("Mysql connected...");
-});
-
-db.on('error', function (err) {
-    console.log('db error', err);
-    if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-        db = mysql.createConnection({
-            host: process.env.DB_HOST,
-            user: process.env.DB_USER,
-            password: process.env.DB_PASSWORD,
-            database: process.env.DB_NAME
-        });
-        db.connect((err) => {
-            if (err) {
-                throw err;
-            }
+};
+const handleDisconnect= () => {
+    let db = mysql.createConnection(dbConfig);
+    db.connect((err) => {
+        if (err) {
+            setTimeout(handleDisconnect, 2000);
+        }else{
             console.log("Mysql connected...");
-        })
-    } else {
-        throw err;
-    }
-});
+        }
+    });
+    db.on('error', (err) => {
+        console.log('db error', err);
+        if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+            handleDisconnect();
+        } else {
+            throw err;
+        }
+    });
+}
+ handleDisconnect();
+
+
+
+
 
 const getById = (id, res) => {
     db.query(`SELECT * FROM rooms WHERE id=?`, id, (err, result) => {
