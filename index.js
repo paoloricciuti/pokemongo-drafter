@@ -31,5 +31,7 @@ app.get("/rooms", (req, res)=>{
         res.json(result);
     });
 })
-
+app.get("*", (req, res, next) => {
+    res.sendFile(path.join(__dirname+'/client/build/index.html'));
+});
 app.listen(port, () => console.log("Server is running..."));
