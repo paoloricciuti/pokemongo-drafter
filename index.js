@@ -3,29 +3,29 @@ const mysql = require("mysql");
 const path = require('path');
 const dotenv = require("dotenv");
 const crypto = require("crypto");
-const httpServer= require("http");
-const socketio= require("socket.io");
+const httpServer = require("http");
+const socketio = require("socket.io");
 const { DH_UNABLE_TO_CHECK_GENERATOR } = require("constants");
 dotenv.config();
 
 let db;
 const app = express();
-const http= httpServer.createServer(app);
-const io=socketio(http);
+const http = httpServer.createServer(app);
+const io = socketio(http);
 
 const port = process.env.PORT || 3000;
-const dbConfig={
+const dbConfig = {
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME
 };
-const handleDisconnect= () => {
+const handleDisconnect = () => {
     db = mysql.createConnection(dbConfig);
     db.connect((err) => {
         if (err) {
             setTimeout(handleDisconnect, 2000);
-        }else{
+        } else {
             console.log("Mysql connected...");
         }
     });
@@ -39,7 +39,7 @@ const handleDisconnect= () => {
     });
 }
 
- handleDisconnect();
+handleDisconnect();
 
 
 
@@ -79,58 +79,75 @@ const formatName = (name) => {
     return name.toLowerCase().replace(/\s/g, "-");
 }
 
-const emitRoom= (room_link)=>{
+const emitRoom = (room_link) => {
     db.query(`SELECT rooms.name, joined.username, joined.online FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link WHERE link=?`, room_link, (err, result) => {
         if (err) {
             throw err;
         }
-        let room={
+        let room = {
             name: result[0].name,
             link: room_link,
             players: []
         };
-        for(let joined of result){
+        for (let joined of result) {
             room.players.push({
                 username: joined.username,
-                online: joined.online 
+                online: joined.online
             })
         }
         io.to(room_link).emit("updateRoom", room);
     });
 }
 
-io.on("connection", (socket)=>{
-    console.log(socket.id);
-    socket.on("joinRoom", (joinData)=>{
-        socket.join(joinData.room);
-        let joined={
+let connectedClients=[];
+
+io.on("connection", (socket) => {
+    connectedClients.push(socket);
+    socket.on("joinRoom", (joinData) => {
+        let joined = {
             username: joinData.username,
             password: sha256(joinData.password),
             room_link: joinData.room,
             online: true
         }
-        db.query("SELECT * FROM joined WHERE room_link=? AND username=?", [joined.room_link, joined.username], (err, result)=>{
-            if(!err){
-                if(result.length==1){
-                    if(result[0].password==joined.password){
+        db.query("SELECT * FROM joined WHERE room_link=? AND username=?", [joined.room_link, joined.username], (err, result) => {
+            if (!err) {
+                if (result.length == 1) {
+                    if (result[0].password == joined.password) {
                         db.query("UPDATE joined SET online=1 WHERE room_link=? AND username=?", [joined.room_link, joined.username], (err, results) => {
-                            if(!err){
+                            if (!err) {
+                                socket.room_link=joined.room_link;
+                                socket.username=joined.username;
+                                socket.join(joinData.room);
                                 emitRoom(joinData.room);
                             }
                         });
-                    }else{
+                    } else {
                         socket.emit("wrongPassword", true);
                     }
-                }else{
+                } else {
                     db.query("INSERT INTO joined SET ?", joined, (err, results) => {
-                        if(!err){
+                        if (!err) {
+                            socket.room_link=joined.room_link;
+                            socket.username=joined.username;        
+                            socket.join(joinData.room);
                             emitRoom(joinData.room);
                         }
                     });
                 }
             }
         });
-        
+
+    });
+    socket.on('disconnect', () => {
+        let room=socket.room_link;
+        db.query("UPDATE joined SET online=0 WHERE room_link=? AND username=?", [socket.room_link, socket.username], (err, results) => {
+            if (!err) {
+                let i= connectedClients.indexOf(socket);
+                connectedClients.splice(i, 1);
+                emitRoom(room);
+            }
+        });
     });
 });
 
