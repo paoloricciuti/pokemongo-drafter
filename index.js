@@ -30,11 +30,10 @@ const handleDisconnect = () => {
         }
     });
     db.on('error', (err) => {
-        console.log('db error', err);
         if (err.code === 'PROTOCOL_CONNECTION_LOST') {
             handleDisconnect();
         } else {
-            throw err;
+            console.error(err);
         }
     });
 }
@@ -48,7 +47,8 @@ handleDisconnect();
 const getById = (id, res) => {
     db.query(`SELECT * FROM rooms WHERE id=?`, id, (err, result) => {
         if (err) {
-            throw err;
+            console.error(err);
+            res.sendStatus(400);
         }
         if (result.length == 1) {
             res.json(result.pop());
@@ -61,7 +61,8 @@ const getById = (id, res) => {
 const getByLink = (link, res) => {
     db.query(`SELECT * FROM rooms WHERE link=?`, link, (err, result) => {
         if (err) {
-            throw err;
+            console.error(err);
+            res.sendStatus(400);
         }
         if (result.length == 1) {
             res.json(result.pop());
@@ -80,9 +81,11 @@ const formatName = (name) => {
 }
 
 const emitRoom = (room_link) => {
+    console.log("Emitting "+room_link);
     db.query(`SELECT rooms.name, joined.username, joined.online FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link WHERE link=?`, room_link, (err, result) => {
         if (err) {
-            throw err;
+            console.error(err);
+            return;
         }
         let room = {
             name: result[0].name,
@@ -156,7 +159,8 @@ app.use(express.json());
 app.get("/api/rooms", (req, res) => {
     db.query("SELECT * FROM rooms", (err, result) => {
         if (err) {
-            throw err;
+            console.error(err);
+            res.sendStatus(400);
         }
         res.json(result);
     });
