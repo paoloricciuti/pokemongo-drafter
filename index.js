@@ -78,10 +78,59 @@ const sha256 = (value) => {
 const formatName = (name) => {
     return name.toLowerCase().replace(/\s/g, "-");
 }
+
+const emitRoom= (room_link)=>{
+    db.query(`SELECT rooms.name, joined.username, joined.online FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link WHERE link=?`, room_link, (err, result) => {
+        if (err) {
+            throw err;
+        }
+        let room={
+            name: result[0].name,
+            link: room_link,
+            players: []
+        };
+        for(let joined of result){
+            room.players.push({
+                username: joined.username,
+                online: joined.online 
+            })
+        }
+        io.to(room_link).emit("updateRoom", room);
+    });
+}
+
 io.on("connection", (socket)=>{
     console.log(socket.id);
-    socket.on("joinRoom", (data)=>{
-        io.sockets.emit("roomUpdate", users);
+    socket.on("joinRoom", (joinData)=>{
+        socket.join(joinData.room);
+        let joined={
+            username: joinData.username,
+            password: sha256(joinData.password),
+            room_link: joinData.room,
+            online: true
+        }
+        db.query("SELECT * FROM joined WHERE room_link=? AND username=?", [joined.room_link, joined.username], (err, result)=>{
+            if(!err){
+                if(result.length==1){
+                    if(result[0].password==joined.password){
+                        db.query("UPDATE joined SET online=1 WHERE room_link=? AND username=?", [joined.room_link, joined.username], (err, results) => {
+                            if(!err){
+                                emitRoom(joinData.room);
+                            }
+                        });
+                    }else{
+                        socket.emit("wrongPassword", true);
+                    }
+                }else{
+                    db.query("INSERT INTO joined SET ?", joined, (err, results) => {
+                        if(!err){
+                            emitRoom(joinData.room);
+                        }
+                    });
+                }
+            }
+        });
+        
     });
 });
 
