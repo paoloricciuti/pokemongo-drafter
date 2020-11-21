@@ -97,7 +97,7 @@ const emitRoom = (room_link) => {
             choosing: result[0].choosing,
             started: result[0].started,
             league: result[0].league,
-            ban_rounds: result[0].ban_rounds,
+            ban_rounds: [...result[0].ban_rounds].map(elem=>elem==="1"),
             players: []
         };
         for (let picks of result) {
@@ -237,7 +237,7 @@ io.on("connection", (socket) => {
             }
         })
     });
-    socket.on("startDraft", ({room_link, banRounds, league})=>{
+    socket.on("startDraft", ({room_link, bans, league})=>{
         db.query("SELECT * FROM joined WHERE room_link=?", room_link, (err, result)=>{
             if(!err){
                 if(result){
@@ -257,7 +257,7 @@ io.on("connection", (socket) => {
                         i++;
                     }
                     Promise.all(promises).then(()=>{
-                        db.query("UPDATE rooms SET started=1, ban_rounds=?, league=? WHERE link=?", [banRounds, league, room_link], (errStart, _)=>{
+                        db.query("UPDATE rooms SET started=1, rounds=?, ban_rounds=?, league=? WHERE link=?", [bans.length, bans.reduce((val, turn) => val+(turn?"1":"0"),""), league, room_link], (errStart, _)=>{
                             if(!errStart){
                                 emitRoom(room_link);
                             }else{
