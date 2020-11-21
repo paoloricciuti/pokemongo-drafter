@@ -86,7 +86,7 @@ const emitRoom = (room_link) => {
     if (!room_link) {
         return;
     }
-    db.query(`SELECT rooms.name, rooms.choosing, rooms.started, joined.username, joined.online, joined.pick_order, pick.pick, pick.pick_id  FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link LEFT JOIN pick ON pick.room_link=rooms.link AND pick.username=joined.username WHERE link=?`, room_link, (err, result) => {
+    db.query(`SELECT rooms.name, rooms.choosing, rooms.ban_rounds, rooms.league, rooms.started, joined.username, joined.online, joined.pick_order, joined.host, pick.pick, pick.pick_id  FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link LEFT JOIN pick ON pick.room_link=rooms.link AND pick.username=joined.username WHERE link=?`, room_link, (err, result) => {
         if (err) {
             console.error(err);
             return;
@@ -96,6 +96,8 @@ const emitRoom = (room_link) => {
             link: room_link,
             choosing: result[0].choosing,
             started: result[0].started,
+            league: result[0].league,
+            ban_rounds: result[0].ban_rounds,
             players: []
         };
         for (let picks of result) {
@@ -116,6 +118,7 @@ const emitRoom = (room_link) => {
                 room.players.push({
                     username: picks.username,
                     online: picks.online,
+                    host: picks.host,
                     pick_order: picks.pick_order,
                     team: baseTeam
                 })
@@ -160,6 +163,7 @@ io.on("connection", (socket) => {
                                 if (resultStarted[0].started == 0) {
                                     db.query("UPDATE rooms SET registered=registered+1 WHERE link=?", joined.room_link, (updateErr, _) => {
                                         if(!updateErr){
+                                            joined.host=resultStarted[0].registered==0;
                                             db.query("INSERT INTO joined SET ?", joined, (err, results) => {
                                                 if (!err) {
                                                     socket.room_link = joined.room_link;
@@ -215,10 +219,12 @@ io.on("connection", (socket) => {
                                             emitRoom(pickMsg.room_link);
                                         }else{
                                             //sendmessage error update
+                                            console.error(updateErr);
                                         }
                                     });
                                 }else{
                                     //send message error insert
+                                    console.error(insertErr);
                                 }
                             });
                         }else{
@@ -231,7 +237,7 @@ io.on("connection", (socket) => {
             }
         })
     });
-    socket.on("startDraft", (room_link)=>{
+    socket.on("startDraft", ({room_link, banRounds, league})=>{
         db.query("SELECT * FROM joined WHERE room_link=?", room_link, (err, result)=>{
             if(!err){
                 if(result){
@@ -241,7 +247,7 @@ io.on("connection", (socket) => {
                     for(let user of result){
                         promises.push(new Promise((resolve, reject)=>{
                             db.query("UPDATE joined SET pick_order=? WHERE id=?",[i, user.id],(errUp, _)=>{
-                                if(err){
+                                if(errUp){
                                     reject(errUp);
                                 }else{
                                     resolve(_);
@@ -251,11 +257,12 @@ io.on("connection", (socket) => {
                         i++;
                     }
                     Promise.all(promises).then(()=>{
-                        db.query("UPDATE rooms SET started=1 WHERE link=?", room_link, (errStart, _)=>{
+                        db.query("UPDATE rooms SET started=1, ban_rounds=?, league=? WHERE link=?", [banRounds, league, room_link], (errStart, _)=>{
                             if(!errStart){
                                 emitRoom(room_link);
                             }else{
-                                //send error start
+                                //eventually send socket response
+                                console.error(errStart);
                             }
                         });
                     });
