@@ -341,7 +341,22 @@ app.get("/api/rankings/:league", (req, res) => {
     let { league } = req.params;
     fetch(`https://pvpoke.com/data/rankings/all/overall/rankings-${league}.json`)
     .then(response => response.json())
-    .then(data => res.json(data.filter(elem=>elem.speciesId.indexOf("_shadow")==-1)));
+    .then(data => {
+        fetch(`https://pvpoke.com/data/gamemaster.json`)
+        .then(gameMasterRes => gameMasterRes.json())
+        .then(gameMaster => {
+            let filtered=data.filter(elem=>elem.speciesId.indexOf("_shadow")==-1);
+            filtered.forEach((pokemon)=>{
+                pokemon.moves.chargedMoves=pokemon.moves.chargedMoves.map(move =>{
+                     return {...move, type: gameMaster.moves.find(gmMove => gmMove.moveId==move.moveId).type}
+                    })
+                pokemon.moves.fastMoves=pokemon.moves.fastMoves.map(move =>{
+                    return {...move, type: gameMaster.moves.find(gmMove => gmMove.moveId==move.moveId).type}
+                   })
+               });
+            res.json(filtered)
+        })
+    });
 });
 app.get("*", (req, res, next) => {
     res.sendFile(path.join(__dirname + '/client/build/index.html'));
