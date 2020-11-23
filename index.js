@@ -347,6 +347,7 @@ app.get("/api/rankings/:league", (req, res) => {
         .then(gameMaster => {
             let filtered=data.filter(elem=>elem.speciesId.indexOf("_shadow")==-1);
             filtered.forEach((pokemon)=>{
+                pokemon.types=gameMaster.pokemon.find(gmPokemon => gmPokemon.speciesId==pokemon.speciesId).types;
                 pokemon.moves.chargedMoves=pokemon.moves.chargedMoves.map(move =>{
                      return {...move, type: gameMaster.moves.find(gmMove => gmMove.moveId==move.moveId).type}
                     })
