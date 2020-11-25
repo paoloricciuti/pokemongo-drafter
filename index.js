@@ -19,7 +19,8 @@ const dbConfig = {
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME
+    database: process.env.DB_NAME,
+    charset : 'utf8mb4'
 };
 const handleDisconnect = () => {
     db = mysql.createConnection(dbConfig);
@@ -79,6 +80,29 @@ const sha256 = (value) => {
 
 const formatName = (name) => {
     return name.toLowerCase().replace(/\s/g, "-");
+}
+
+const emitChat = (room_link) => {
+    console.log("Emitting chat " + room_link);
+    if (!room_link) {
+        return;
+    }
+    db.query(`SELECT *  FROM chats WHERE room_link=?`, room_link, (err, result) => {
+        if (err) {
+            console.error(err);
+            return;
+        }
+        let chat=[];
+        for (let msg of result) {
+            let date=new Date(msg.timestamp);
+            chat.push({
+                author: msg.username,
+                msg: msg.msg,
+                eta: `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+            })
+        }
+        io.to(room_link).emit("updateChat", chat);
+    });
 }
 
 const emitRoom = (room_link) => {
@@ -151,6 +175,7 @@ io.on("connection", (socket) => {
                                 socket.username = joined.username;
                                 socket.join(joinData.room);
                                 emitRoom(joinData.room);
+                                emitChat(joinData.room);
                             }
                         });
                     } else {
@@ -269,6 +294,13 @@ io.on("connection", (socket) => {
                 }
             }
         });
+    })
+    socket.on("chatMsg", (chatMsg)=>{
+        db.query("INSERT INTO chats SET ?", chatMsg, (err, result)=>{
+            if(!err){
+                emitChat(chatMsg.room_link);
+            }
+        })
     })
     socket.on('disconnect', () => {
         let room = socket.room_link;
