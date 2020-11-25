@@ -195,6 +195,7 @@ io.on("connection", (socket) => {
                                                     socket.username = joined.username;
                                                     socket.join(joinData.room);
                                                     emitRoom(joinData.room);
+                                                    emitChat(joinData.room);
                                                 }
                                             });
                                         }
