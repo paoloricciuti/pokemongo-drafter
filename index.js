@@ -20,7 +20,7 @@ const dbConfig = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    charset : 'utf8mb4'
+    charset: 'utf8mb4'
 };
 const handleDisconnect = () => {
     db = mysql.createConnection(dbConfig);
@@ -92,9 +92,9 @@ const emitChat = (room_link) => {
             console.error(err);
             return;
         }
-        let chat=[];
+        let chat = [];
         for (let msg of result) {
-            let date=new Date(msg.timestamp);
+            let date = new Date(msg.timestamp);
             chat.push({
                 author: msg.username,
                 msg: msg.msg,
@@ -121,7 +121,7 @@ const emitRoom = (room_link) => {
             choosing: result[0].choosing,
             started: result[0].started,
             league: result[0].league,
-            ban_rounds: [...result[0].ban_rounds].map(elem=>elem==="1"),
+            ban_rounds: [...result[0].ban_rounds].map(elem => elem === "1"),
             players: []
         };
         for (let picks of result) {
@@ -148,8 +148,8 @@ const emitRoom = (room_link) => {
                 })
             }
         }
-        room.choosed_list=room.players.flatMap(elem=>elem.team).map(elem=>elem.pick_id);
-        room.players.sort((a,b) => a.pick_order-b.pick_order);
+        room.choosed_list = room.players.flatMap(elem => elem.team).map(elem => elem.pick_id);
+        room.players.sort((a, b) => a.pick_order - b.pick_order);
         io.to(room_link).emit("updateRoom", room);
     });
 }
@@ -187,8 +187,8 @@ io.on("connection", (socket) => {
                             if (resultStarted.length == 1) {
                                 if (resultStarted[0].started == 0) {
                                     db.query("UPDATE rooms SET registered=registered+1 WHERE link=?", joined.room_link, (updateErr, _) => {
-                                        if(!updateErr){
-                                            joined.host=resultStarted[0].registered==0;
+                                        if (!updateErr) {
+                                            joined.host = resultStarted[0].registered == 0;
                                             db.query("INSERT INTO joined SET ?", joined, (err, results) => {
                                                 if (!err) {
                                                     socket.room_link = joined.room_link;
@@ -211,82 +211,82 @@ io.on("connection", (socket) => {
         });
 
     });
-    socket.on("pick", (pickMsg)=>{
-        db.query("SELECT rooms.name, rooms.choosing, rooms.registered, rooms.flow, joined.username, joined.online, joined.pick_order, pick.pick, pick.pick_id  FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link LEFT JOIN pick ON pick.room_link=rooms.link AND pick.username=joined.username WHERE link=?", pickMsg.room_link, (err, results)=>{
-            if(!err){
-                if(results.length>0){
-                    if(results[0].choosing==pickMsg.chooser.pick_order){
-                        let already_taken=results.map(row => row.pick_id);
-                        if(already_taken.indexOf(pickMsg.pick_id)==-1){
-                            let newPick={
+    socket.on("pick", (pickMsg) => {
+        db.query("SELECT rooms.name, rooms.choosing, rooms.registered, rooms.flow, joined.username, joined.online, joined.pick_order, pick.pick, pick.pick_id  FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link LEFT JOIN pick ON pick.room_link=rooms.link AND pick.username=joined.username WHERE link=?", pickMsg.room_link, (err, results) => {
+            if (!err) {
+                if (results.length > 0) {
+                    if (results[0].choosing == pickMsg.chooser.pick_order) {
+                        let already_taken = results.map(row => row.pick_id);
+                        if (already_taken.indexOf(pickMsg.pick_id) == -1) {
+                            let newPick = {
                                 room_link: pickMsg.room_link,
                                 username: pickMsg.chooser.username,
                                 pick: pickMsg.pick,
                                 pick_id: pickMsg.pick_id
                             };
-                            db.query("INSERT INTO pick SET ?", newPick, (insertErr, _)=>{
-                                if(!insertErr){
-                                    let flow=results[0].flow;
-                                    let next=results[0].choosing+flow;
-                                    let registered=results[0].registered;
-                                    if(flow==1){
-                                        if(next>=registered){
-                                            next=next-1;
-                                            flow=-1;
+                            db.query("INSERT INTO pick SET ?", newPick, (insertErr, _) => {
+                                if (!insertErr) {
+                                    let flow = results[0].flow;
+                                    let next = results[0].choosing + flow;
+                                    let registered = results[0].registered;
+                                    if (flow == 1) {
+                                        if (next >= registered) {
+                                            next = next - 1;
+                                            flow = -1;
                                         }
-                                    }else{
-                                        if(next<0){
-                                            next=0;
-                                            flow=1;
+                                    } else {
+                                        if (next < 0) {
+                                            next = 0;
+                                            flow = 1;
                                         }
                                     }
-                                    db.query(`UPDATE rooms SET flow=?, choosing=? WHERE link=?`,[flow, next, pickMsg.room_link],(updateErr, __)=>{
-                                        if(!updateErr){
+                                    db.query(`UPDATE rooms SET flow=?, choosing=? WHERE link=?`, [flow, next, pickMsg.room_link], (updateErr, __) => {
+                                        if (!updateErr) {
                                             emitRoom(pickMsg.room_link);
-                                        }else{
+                                        } else {
                                             //sendmessage error update
                                             console.error(updateErr);
                                         }
                                     });
-                                }else{
+                                } else {
                                     //send message error insert
                                     console.error(insertErr);
                                 }
                             });
-                        }else{
+                        } else {
                             //send error pick already taken
                         }
-                    }else{
+                    } else {
                         //send error not your turn
                     }
                 }
             }
         })
     });
-    socket.on("startDraft", ({room_link, bans, league})=>{
-        db.query("SELECT * FROM joined WHERE room_link=?", room_link, (err, result)=>{
-            if(!err){
-                if(result){
-                    result.sort((a,b) => Math.random());
-                    let i=0;
-                    let promises=[];
-                    for(let user of result){
-                        promises.push(new Promise((resolve, reject)=>{
-                            db.query("UPDATE joined SET pick_order=? WHERE id=?",[i, user.id],(errUp, _)=>{
-                                if(errUp){
+    socket.on("startDraft", ({ room_link, bans, league }) => {
+        db.query("SELECT * FROM joined WHERE room_link=?", room_link, (err, result) => {
+            if (!err) {
+                if (result) {
+                    result.sort((a, b) => Math.random());
+                    let i = 0;
+                    let promises = [];
+                    for (let user of result) {
+                        promises.push(new Promise((resolve, reject) => {
+                            db.query("UPDATE joined SET pick_order=? WHERE id=?", [i, user.id], (errUp, _) => {
+                                if (errUp) {
                                     reject(errUp);
-                                }else{
+                                } else {
                                     resolve(_);
                                 }
                             })
                         }));
                         i++;
                     }
-                    Promise.all(promises).then(()=>{
-                        db.query("UPDATE rooms SET started=1, rounds=?, ban_rounds=?, league=? WHERE link=?", [bans.length, bans.reduce((val, turn) => val+(turn?"1":"0"),""), league, room_link], (errStart, _)=>{
-                            if(!errStart){
+                    Promise.all(promises).then(() => {
+                        db.query("UPDATE rooms SET started=1, rounds=?, ban_rounds=?, league=? WHERE link=?", [bans.length, bans.reduce((val, turn) => val + (turn ? "1" : "0"), ""), league, room_link], (errStart, _) => {
+                            if (!errStart) {
                                 emitRoom(room_link);
-                            }else{
+                            } else {
                                 //eventually send socket response
                                 console.error(errStart);
                             }
@@ -296,22 +296,24 @@ io.on("connection", (socket) => {
             }
         });
     })
-    socket.on("chatMsg", (chatMsg)=>{
-        db.query("INSERT INTO chats SET ?", chatMsg, (err, result)=>{
-            if(!err){
+    socket.on("chatMsg", (chatMsg) => {
+        db.query("INSERT INTO chats SET ?", chatMsg, (err, result) => {
+            if (!err) {
                 emitChat(chatMsg.room_link);
             }
         })
     })
     socket.on('disconnect', () => {
         let room = socket.room_link;
-        db.query("UPDATE joined SET online=0 WHERE room_link=? AND username=?", [socket.room_link, socket.username], (err, results) => {
-            if (!err) {
-                let i = connectedClients.indexOf(socket);
-                connectedClients.splice(i, 1);
-                emitRoom(room);
-            }
-        });
+        if (room) {
+            db.query("UPDATE joined SET online=0 WHERE room_link=? AND username=?", [socket.room_link, socket.username], (err, results) => {
+                if (!err) {
+                    let i = connectedClients.indexOf(socket);
+                    connectedClients.splice(i, 1);
+                    emitRoom(room);
+                }
+            });
+        }
     });
 
 });
@@ -373,24 +375,24 @@ app.post("/api/rooms", (req, res) => {
 app.get("/api/rankings/:league", (req, res) => {
     let { league } = req.params;
     fetch(`https://pvpoke.com/data/rankings/all/overall/rankings-${league}.json`)
-    .then(response => response.json())
-    .then(data => {
-        fetch(`https://pvpoke.com/data/gamemaster.json`)
-        .then(gameMasterRes => gameMasterRes.json())
-        .then(gameMaster => {
-            let filtered=data.filter(elem=>elem.speciesId.indexOf("_shadow")==-1);
-            filtered.forEach((pokemon)=>{
-                pokemon.types=gameMaster.pokemon.find(gmPokemon => gmPokemon.speciesId==pokemon.speciesId).types;
-                pokemon.moves.chargedMoves=pokemon.moves.chargedMoves.map(move =>{
-                     return {...move, type: gameMaster.moves.find(gmMove => gmMove.moveId==move.moveId).type}
-                    })
-                pokemon.moves.fastMoves=pokemon.moves.fastMoves.map(move =>{
-                    return {...move, type: gameMaster.moves.find(gmMove => gmMove.moveId==move.moveId).type}
-                   })
-               });
-            res.json(filtered)
-        })
-    });
+        .then(response => response.json())
+        .then(data => {
+            fetch(`https://pvpoke.com/data/gamemaster.json`)
+                .then(gameMasterRes => gameMasterRes.json())
+                .then(gameMaster => {
+                    let filtered = data.filter(elem => elem.speciesId.indexOf("_shadow") == -1);
+                    filtered.forEach((pokemon) => {
+                        pokemon.types = gameMaster.pokemon.find(gmPokemon => gmPokemon.speciesId == pokemon.speciesId).types;
+                        pokemon.moves.chargedMoves = pokemon.moves.chargedMoves.map(move => {
+                            return { ...move, type: gameMaster.moves.find(gmMove => gmMove.moveId == move.moveId).type }
+                        })
+                        pokemon.moves.fastMoves = pokemon.moves.fastMoves.map(move => {
+                            return { ...move, type: gameMaster.moves.find(gmMove => gmMove.moveId == move.moveId).type }
+                        })
+                    });
+                    res.json(filtered)
+                })
+        });
 });
 app.get("*", (req, res, next) => {
     res.sendFile(path.join(__dirname + '/client/build/index.html'));
