@@ -388,7 +388,8 @@ app.get("/api/rankings/:league", (req, res) => {
                         })
                         pokemon.moves.fastMoves = pokemon.moves.fastMoves.map(move => {
                             return { ...move, type: gameMaster.moves.find(gmMove => gmMove.moveId == move.moveId).type }
-                        })
+                        });
+                        pokemon.stats=gameMaster.pokemon.find(gmPokemon => gmPokemon.speciesId == pokemon.speciesId).baseStats;
                     });
                     res.json(filtered)
                 })
