@@ -6,3 +6,6 @@ client/src/
 client/*
 !client/build/
 .env
+*.png
+*.jpg
+*.ico
