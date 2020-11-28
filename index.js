@@ -98,7 +98,8 @@ const emitChat = (room_link) => {
             chat.push({
                 author: msg.username,
                 msg: msg.msg,
-                eta: `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+                eta: msg.timestamp
+//                eta: `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
             })
         }
         io.to(room_link).emit("updateChat", chat);
