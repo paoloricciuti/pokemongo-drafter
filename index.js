@@ -6,11 +6,15 @@ const dotenv = require("dotenv");
 const crypto = require("crypto");
 const httpServer = require("http");
 const socketio = require("socket.io");
+const md = require('markdown-it')({
+    linkify: true
+});
 const { DH_UNABLE_TO_CHECK_GENERATOR } = require("constants");
 dotenv.config();
 
 let db;
 const app = express();
+app.set('view engine', 'ejs');
 const http = httpServer.createServer(app);
 const io = socketio(http);
 
@@ -99,7 +103,7 @@ const emitChat = (room_link) => {
                 author: msg.username,
                 msg: msg.msg,
                 eta: msg.timestamp
-//                eta: `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+                //                eta: `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
             })
         }
         io.to(room_link).emit("updateChat", chat);
@@ -111,7 +115,7 @@ const emitRoom = (room_link) => {
     if (!room_link) {
         return;
     }
-    db.query(`SELECT rooms.name, rooms.choosing, rooms.ban_rounds, rooms.league, rooms.started, joined.username, joined.online, joined.pick_order, joined.host, pick.pick, pick.pick_id  FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link LEFT JOIN pick ON pick.room_link=rooms.link AND pick.username=joined.username WHERE link=?`, room_link, (err, result) => {
+    db.query(`SELECT rooms.name, rooms.choosing, rooms.ban_rounds, rooms.league, rooms.started, joined.username, joined.online, joined.pick_order, joined.host, pick.pick, pick.pick_id, pick.id  FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link LEFT JOIN pick ON pick.room_link=rooms.link AND pick.username=joined.username WHERE link=?`, room_link, (err, result) => {
         if (err) {
             console.error(err);
             return;
@@ -130,14 +134,16 @@ const emitRoom = (room_link) => {
             if (player) {
                 player.team.push({
                     pick: picks.pick,
-                    pick_id: picks.pick_id
+                    pick_id: picks.pick_id,
+                    id: picks.id
                 });
             } else {
                 let baseTeam = [];
                 if (picks.pick) {
                     baseTeam.push({
                         pick: picks.pick,
-                        pick_id: picks.pick_id
+                        pick_id: picks.pick_id,
+                        id: picks.id
                     });
                 }
                 room.players.push({
@@ -212,13 +218,26 @@ io.on("connection", (socket) => {
         });
 
     });
+    socket.on("substitute", pickMsg => {
+        console.log(pickMsg);
+        db.query("UPDATE pick SET pick=?, pick_id=? WHERE id=?", [pickMsg.pick, pickMsg.pick_id, pickMsg.id], (err, results) => {
+            console.log(err, results);
+            if (!err) {
+                emitRoom(pickMsg.room_link);
+            }
+        });
+    })
+    socket.on("joinRoomSpec", (joinData) => {
+        socket.join(joinData.room);
+        emitRoom(joinData.room);
+    });
     socket.on("pick", (pickMsg) => {
         db.query("SELECT rooms.name, rooms.choosing, rooms.registered, rooms.flow, joined.username, joined.online, joined.pick_order, pick.pick, pick.pick_id  FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link LEFT JOIN pick ON pick.room_link=rooms.link AND pick.username=joined.username WHERE link=?", pickMsg.room_link, (err, results) => {
             if (!err) {
                 if (results.length > 0) {
-                    if (results[0].choosing == pickMsg.chooser.pick_order) {
+                    if (pickMsg.substitute===true || results[0].choosing == pickMsg.chooser.pick_order) {
                         let already_taken = results.map(row => row.pick_id);
-                        if (already_taken.indexOf(pickMsg.pick_id) == -1) {
+                        if (pickMsg.substitute===true || already_taken.indexOf(pickMsg.pick_id) == -1) {
                             let newPick = {
                                 room_link: pickMsg.room_link,
                                 username: pickMsg.chooser.username,
@@ -268,7 +287,7 @@ io.on("connection", (socket) => {
         db.query("SELECT * FROM joined WHERE room_link=?", room_link, (err, result) => {
             if (!err) {
                 if (result) {
-                    result.sort((a, b) => Math.random());
+                    result.sort((a, b) => Math.random()-0.5);
                     let i = 0;
                     let promises = [];
                     for (let user of result) {
@@ -321,6 +340,78 @@ io.on("connection", (socket) => {
 
 app.use(express.static(path.join(__dirname, 'client/build')));
 app.use(express.json());
+app.get("/articles/:slug", (req, res) => {
+    if (req.params.slug == "bg.jpg") {
+        res.sendFile(path.join(__dirname + '/client/build/bg.jpg'));
+        return;
+    } else if (req.params.slug == "articles.css") {
+        res.sendFile(path.join(__dirname + '/client/build/articles.css'));
+        return;
+    }
+    db.query("SELECT * FROM articles WHERE slug LIKE ?", req.params.slug, (err, results) => {
+        if (!err) {
+            if (results.length == 0) {
+                res.redirect("/");
+            }
+            if (results.length >= 1) {
+                results[0].article = md.render(results[0].article);
+                res.render("article", results[0]);
+            }
+        } else {
+            res.redirect("/");
+        }
+    });
+});
+app.get("/articles", (req, res) => {
+    db.query("SELECT * FROM articles", (err, results) => {
+        if (!err) {
+            for (let article of results) {
+                article.description = md.render(article.description);
+                article.article = md.render(article.article);
+            }
+            res.render("articles", { articles: results });
+        } else {
+            res.redirect("/");
+        }
+    });
+    articles = [{
+        title: "test",
+        article: "Ecco l'articolo"
+    }, {
+        title: "test 2",
+        article: "Ecco l'articolo 2"
+    }, {
+        title: "test",
+        article: "Ecco l'articolo"
+    }, {
+        title: "test 2",
+        article: "Ecco l'articolo 2"
+    }, {
+        title: "test",
+        article: "Ecco l'articolo"
+    }, {
+        title: "test 2",
+        article: "Ecco l'articolo 2"
+    }, {
+        title: "test",
+        article: "Ecco l'articolo"
+    }, {
+        title: "test 2",
+        article: "Ecco l'articolo 2"
+    }, {
+        title: "test",
+        article: "Ecco l'articolo"
+    }, {
+        title: "test 2",
+        article: "Ecco l'articolo 2"
+    }, {
+        title: "test",
+        article: "Ecco l'articolo"
+    }, {
+        title: "test 2",
+        article: "Ecco l'articolo 2"
+    }];
+});
 app.get("/api/rooms", (req, res) => {
     db.query("SELECT * FROM rooms", (err, result) => {
         if (err) {
@@ -381,7 +472,7 @@ app.get("/api/rankings/:league", (req, res) => {
             fetch(`https://pvpoke.com/data/gamemaster.json`)
                 .then(gameMasterRes => gameMasterRes.json())
                 .then(gameMaster => {
-                    let filtered = data.filter(elem => elem.speciesId.indexOf("_shadow") == -1 && elem.speciesId.indexOf("_xl") == -1 );
+                    let filtered = data.filter(elem => elem.speciesId.indexOf("_shadow") == -1 && elem.speciesId.indexOf("_xl") == -1);
                     filtered.forEach((pokemon) => {
                         pokemon.types = gameMaster.pokemon.find(gmPokemon => gmPokemon.speciesId == pokemon.speciesId).types;
                         pokemon.moves.chargedMoves = pokemon.moves.chargedMoves.map(move => {
@@ -390,7 +481,7 @@ app.get("/api/rankings/:league", (req, res) => {
                         pokemon.moves.fastMoves = pokemon.moves.fastMoves.map(move => {
                             return { ...move, type: gameMaster.moves.find(gmMove => gmMove.moveId == move.moveId).type }
                         });
-                        pokemon.stats=gameMaster.pokemon.find(gmPokemon => gmPokemon.speciesId == pokemon.speciesId).baseStats;
+                        pokemon.stats = gameMaster.pokemon.find(gmPokemon => gmPokemon.speciesId == pokemon.speciesId).baseStats;
                     });
                     res.json(filtered)
                 })
