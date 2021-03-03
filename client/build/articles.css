@@ -102,10 +102,6 @@ blockquote::before {
     overflow-x: hidden;
 }
 
-.for-article div {
-    padding: 1rem;
-}
-
 .for-article hr{
     width: 100%;
 }
