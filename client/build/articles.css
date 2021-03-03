@@ -102,6 +102,10 @@ blockquote::before {
     overflow-x: hidden;
 }
 
+.for-article div {
+    padding: 1rem;
+}
+
 .for-article hr{
     width: 100%;
 }
@@ -180,6 +184,22 @@ blockquote::before {
     text-align: center;
     bottom: 1rem;
     font-size: .8em;
+}
+ul{
+    padding-inline-start: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+li {
+    display: block;
+    background: rgba(255,255,255,.5);
+    border: 1px solid white;
+    margin: .1rem;
+    padding: .3rem;
+    border-radius: .3rem;
+    width: 50%;
 }
 
 @media only screen and (max-width: 600px){
