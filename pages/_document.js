@@ -13,6 +13,7 @@ export default class MyDocument extends Document {
                         y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
                     })(window, document, "clarity", "script", "57s2lnu4su");
                     ` }} />
+                    <script data-ad-client="ca-pub-8083797847279880" async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
                     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
                     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" />
                     <meta charSet="utf-8" />
