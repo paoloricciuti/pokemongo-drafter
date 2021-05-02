@@ -7,7 +7,7 @@ export default (req, res) => {
             fetch(`https://pvpoke.com/data/gamemaster.json`)
                 .then(gameMasterRes => gameMasterRes.json())
                 .then(gameMaster => {
-                    let filtered = data.filter(elem => elem.speciesId.indexOf("_shadow") == -1 && elem.speciesId.indexOf("_xl") == -1);
+                    let filtered = data.filter(elem => elem.speciesId.indexOf("_shadow") == -1 && elem.speciesId.indexOf(`_${process.env.XL_OR_XS}`) == -1);
                     filtered.forEach((pokemon) => {
                         pokemon.types = gameMaster.pokemon.find(gmPokemon => gmPokemon.speciesId == pokemon.speciesId).types;
                         pokemon.moves.chargedMoves = pokemon.moves.chargedMoves.map(move => {
