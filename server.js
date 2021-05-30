@@ -17,7 +17,8 @@ const http = httpServer.createServer(app);
 const io = socketio(http, {
     cors: {
         origin: "https://admin.socket.io",
-        methods: ["GET", "POST"]
+        methods: ["GET", "POST"],
+        credentials: true,
     }
 });
 
