@@ -5,6 +5,7 @@ const path = require('path');
 const httpServer = require("http");
 const crypto = require("crypto");
 const socketio = require("socket.io");
+const { instrument } = require("@socket.io/admin-ui");
 const md = require('markdown-it')({
     linkify: true
 });
@@ -13,7 +14,11 @@ const next = require("next");
 const app = express();
 const port = process.env.PORT || 3000;
 const http = httpServer.createServer(app);
-const io = socketio(http);
+const io = socketio(http, {
+    cors: {
+        origin: "https://admin.socket.io"
+    }
+});
 
 const dev = process.env.NODE_ENV != "production";
 
@@ -358,3 +363,11 @@ nextApp.prepare().then(() => {
     })
     http.listen(port, () => console.log("Server is running..."));
 })
+
+instrument(io, {
+    auth: {
+        type: "basic",
+        username: process.env.SOCKET_IO_USERNAME,
+        password: process.env.SOCKET_IO_PASSWORD
+    },
+});
