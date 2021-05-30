@@ -16,7 +16,7 @@ const port = process.env.PORT || 3000;
 const http = httpServer.createServer(app);
 const io = socketio(http, {
     cors: {
-        origin: "https://admin.socket.io"
+        origin: ["https://admin.socket.io"]
     }
 });
 
