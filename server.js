@@ -4,7 +4,7 @@ const mysql = require("mysql");
 const path = require('path');
 const httpServer = require("http");
 const crypto = require("crypto");
-const socketio = require("socket.io");
+const { Server }  = require("socket.io");
 const { instrument } = require("@socket.io/admin-ui");
 const md = require('markdown-it')({
     linkify: true
@@ -14,7 +14,7 @@ const next = require("next");
 const app = express();
 const port = process.env.PORT || 3000;
 const http = httpServer.createServer(app);
-const io = socketio(http, {
+const io = new Server(http, {
     cors: {
         origin: "https://admin.socket.io",
         methods: ["GET", "POST"],
