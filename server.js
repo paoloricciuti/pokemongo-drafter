@@ -1,10 +1,9 @@
 const express = require("express");
 const fetch = require('node-fetch');
-const mysql = require("mysql");
 const path = require('path');
 const httpServer = require("http");
 const crypto = require("crypto");
-const { Server }  = require("socket.io");
+const { Server } = require("socket.io");
 const { instrument } = require("@socket.io/admin-ui");
 const md = require('markdown-it')({
     linkify: true
@@ -26,66 +25,48 @@ const dev = process.env.NODE_ENV != "production";
 
 const nextApp = next({ dev });
 const nextHandler = nextApp.getRequestHandler();
+const db = require('./models');
 
 
 
 nextApp.prepare().then(() => {
     console.log("Next ready...");
-    let db;
-    const dbConfig = {
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-        charset: 'utf8mb4'
-    };
-    const handleDisconnect = () => {
-        db = mysql.createConnection(dbConfig);
-        db.connect((err) => {
-            if (err) {
-                console.error(err)
-                setTimeout(handleDisconnect, 2000);
-            } else {
-                console.log("Mysql connected...");
-            }
-        });
-        db.on('error', (err) => {
-            if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-                handleDisconnect();
-            } else {
-                console.error(err);
-            }
-        });
-    }
-
-    handleDisconnect();
-
-    const getById = (id, res) => {
-        db.query(`SELECT * FROM rooms WHERE id=?`, id, (err, result) => {
-            if (err) {
-                console.error(err);
-                res.sendStatus(400);
-            }
-            if (result.length == 1) {
-                res.json(result.pop());
+    const getById = async (id, res) => {
+        const { rooms } = db;
+        try {
+            const room = await rooms.findOne({
+                where: {
+                    id,
+                }
+            });
+            if (room) {
+                res.json(room);
             } else {
                 res.sendStatus(404);
             }
-        });
+        } catch (e) {
+            console.error(e);
+            res.sendStatus(400);
+        }
     }
 
     const getByLink = (link, res) => {
-        db.query(`SELECT * FROM rooms WHERE link=?`, link, (err, result) => {
-            if (err) {
-                console.error(err);
-                res.sendStatus(400);
-            }
-            if (result.length == 1) {
-                res.json(result.pop());
+        const { rooms } = db;
+        try {
+            const room = await rooms.findOne({
+                where: {
+                    link,
+                }
+            });
+            if (room) {
+                res.json(room);
             } else {
                 res.sendStatus(404);
             }
-        });
+        } catch (e) {
+            console.error(e);
+            res.sendStatus(400);
+        }
     }
 
     const sha256 = (value) => {
@@ -96,16 +77,18 @@ nextApp.prepare().then(() => {
         return name.toLowerCase().replace(/\s/g, "-");
     }
 
-    const emitChat = (room_link) => {
+    const emitChat = async (room_link) => {
         console.log("Emitting chat " + room_link);
         if (!room_link) {
             return;
         }
-        db.query(`SELECT *  FROM chats WHERE room_link=?`, room_link, (err, result) => {
-            if (err) {
-                console.error(err);
-                return;
-            }
+        const { chats } = db;
+        try {
+            const result = await chats.findAll({
+                where: {
+                    room_link,
+                },
+            });
             let chat = [];
             for (let msg of result) {
                 let date = new Date(msg.timestamp);
@@ -113,17 +96,68 @@ nextApp.prepare().then(() => {
                     author: msg.username,
                     msg: msg.msg,
                     eta: msg.timestamp
-                    //                eta: `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
                 })
             }
             io.to(room_link).emit("updateChat", chat);
-        });
+        } catch (e) { }
     }
 
-    const emitRoom = (room_link) => {
+    const emitRoom = async (room_link) => {
         console.log("Emitting " + room_link);
         if (!room_link) {
             return;
+        }
+        const { rooms, joined, pick, Sequelize } = db;
+        const result = await rooms.findOne({
+            where: {
+                link: room_link,
+            },
+            include: [
+                {
+                    model: joined,
+                },
+                {
+                    model: pick,
+                    where: {
+                        username: Sequelize.col("joined.username"),
+                    }
+                }
+            ]
+        });
+        let room = {
+            name: result.name,
+            link: room_link,
+            choosing: result.choosing,
+            started: result.started,
+            league: result.league,
+            ban_rounds: [...result.ban_rounds].map(elem => elem === "1"),
+            players: [],
+        };
+        for (let picks of result.pick) {
+            let player = room.players.find(elem => elem.username == picks.username);
+            if (player) {
+                player.team.push({
+                    pick: picks.pick,
+                    pick_id: picks.pick_id,
+                    id: picks.id
+                });
+            } else {
+                let baseTeam = [];
+                if (picks.pick) {
+                    baseTeam.push({
+                        pick: picks.pick,
+                        pick_id: picks.pick_id,
+                        id: picks.id
+                    });
+                }
+                room.players.push({
+                    username: picks.username,
+                    online: picks.online,
+                    host: picks.host,
+                    pick_order: picks.pick_order,
+                    team: baseTeam
+                })
+            }
         }
         db.query(`SELECT rooms.name, rooms.choosing, rooms.ban_rounds, rooms.league, rooms.started, joined.username, joined.online, joined.pick_order, joined.host, pick.pick, pick.pick_id, pick.id  FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link LEFT JOIN pick ON pick.room_link=rooms.link AND pick.username=joined.username WHERE link=?`, room_link, (err, result) => {
             if (err) {
@@ -173,174 +207,180 @@ nextApp.prepare().then(() => {
 
     let connectedClients = [];
 
-    io.on("connection", (socket) => {
+    io.on("connection", async (socket) => {
         connectedClients.push(socket);
-        socket.on("joinRoom", (joinData) => {
+        const { joined: joinedTable, rooms: roomsTable, pick: pickTable, chats: chatTable } = db;
+        socket.on("joinRoom", async (joinData) => {
             let joined = {
                 username: joinData.username,
                 password: sha256(joinData.password),
                 room_link: joinData.room,
                 online: true
             }
-            db.query("SELECT * FROM joined WHERE room_link=? AND username=?", [joined.room_link, joined.username], (err, result) => {
-                if (!err) {
-                    if (result.length == 1) {
-                        if (result[0].password == joined.password) {
-                            db.query("UPDATE joined SET online=1 WHERE room_link=? AND username=?", [joined.room_link, joined.username], (err, results) => {
-                                if (!err) {
-                                    socket.room_link = joined.room_link;
-                                    socket.username = joined.username;
-                                    socket.join(joinData.room);
-                                    emitRoom(joinData.room);
-                                    emitChat(joinData.room);
+            try {
+                const joinedUser = await joinedTable.findOne({
+                    where: {
+                        room_link: joined.room_link,
+                        username: joined.username
+                    }
+                });
+                if (joinedUser) {
+                    if (joinedUser.password == joined.password) {
+                        try {
+                            await joinedTable.update({ online: 1 }, {
+                                where: {
+                                    room_link: joined.room_link,
+                                    username: joined.username
                                 }
                             });
-                        } else {
-                            socket.emit("error", "Wrong password");
-                        }
+                            socket.room_link = joined.room_link;
+                            socket.username = joined.username;
+                            socket.join(joinData.room);
+                            emitRoom(joinData.room);
+                            emitChat(joinData.room);
+                        } catch (e) { }
                     } else {
-                        db.query("SELECT started, registered FROM rooms WHERE link=?", joined.room_link, (errStarted, resultStarted) => {
-                            if (!err) {
-                                if (resultStarted.length == 1) {
-                                    if (resultStarted[0].started == 0) {
-                                        db.query("UPDATE rooms SET registered=registered+1 WHERE link=?", joined.room_link, (updateErr, _) => {
-                                            if (!updateErr) {
-                                                joined.host = resultStarted[0].registered == 0;
-                                                db.query("INSERT INTO joined SET ?", joined, (err, results) => {
-                                                    if (!err) {
-                                                        socket.room_link = joined.room_link;
-                                                        socket.username = joined.username;
-                                                        socket.join(joinData.room);
-                                                        emitRoom(joinData.room);
-                                                        emitChat(joinData.room);
-                                                    }
-                                                });
-                                            }
-                                        });
-                                    } else {
-                                        socket.emit("error", "The draft is already started");
-                                    }
-                                }
+                        socket.emit("error", "Wrong password");
+                    }
+                } else {
+                    try {
+                        const selRoom = await roomsTable.findOne({
+                            where: {
+                                link: joined.room_link,
                             }
                         });
-                    }
+                        if (selRoom && selRoom.started === 0) {
+                            joined.host = selRoom.registered === 0;
+                            await selRoom.increment("registered");
+                            try {
+                                await joinedTable.create(joined);
+                                socket.room_link = joined.room_link;
+                                socket.username = joined.username;
+                                socket.join(joinData.room);
+                                emitRoom(joinData.room);
+                                emitChat(joinData.room);
+                            } catch (e) { }
+                        } else {
+                            socket.emit("error", "The draft is already started");
+                        }
+                    } catch (e) { }
                 }
-            });
-
+            } catch (e) { }
         });
-        socket.on("substitute", pickMsg => {
-            db.query("UPDATE pick SET pick=?, pick_id=? WHERE id=?", [pickMsg.pick, pickMsg.pick_id, pickMsg.id], (err, results) => {
-                if (!err) {
-                    emitRoom(pickMsg.room_link);
-                }
-            });
+        socket.on("substitute", async pickMsg => {
+            try {
+                await pickTable.update({ pick: pickMsg.pick, pick_id: pickMsg.pick_id }, {
+                    where: {
+                        id: pickMsg.id,
+                    }
+                });
+                emitRoom(pickMsg.room_link);
+            } catch (e) { }
         })
         socket.on("joinRoomSpec", (joinData) => {
             socket.join(joinData.room);
             emitRoom(joinData.room);
         });
-        socket.on("pick", (pickMsg) => {
-            db.query("SELECT rooms.name, rooms.choosing, rooms.registered, rooms.flow, joined.username, joined.online, joined.pick_order, pick.pick, pick.pick_id  FROM rooms LEFT JOIN joined ON rooms.link=joined.room_link LEFT JOIN pick ON pick.room_link=rooms.link AND pick.username=joined.username WHERE link=?", pickMsg.room_link, (err, results) => {
-                if (!err) {
-                    if (results.length > 0) {
-                        if (pickMsg.substitute === true || results[0].choosing == pickMsg.chooser.pick_order) {
-                            let already_taken = results.map(row => row.pick_id);
-                            if (pickMsg.substitute === true || already_taken.indexOf(pickMsg.pick_id) == -1) {
-                                let newPick = {
-                                    room_link: pickMsg.room_link,
-                                    username: pickMsg.chooser.username,
-                                    pick: pickMsg.pick,
-                                    pick_id: pickMsg.pick_id
-                                };
-                                db.query("INSERT INTO pick SET ?", newPick, (insertErr, _) => {
-                                    if (!insertErr) {
-                                        let flow = results[0].flow;
-                                        let next = results[0].choosing + flow;
-                                        let registered = results[0].registered;
-                                        if (flow == 1) {
-                                            if (next >= registered) {
-                                                next = next - 1;
-                                                flow = -1;
-                                            }
-                                        } else {
-                                            if (next < 0) {
-                                                next = 0;
-                                                flow = 1;
-                                            }
-                                        }
-                                        db.query(`UPDATE rooms SET flow=?, choosing=? WHERE link=?`, [flow, next, pickMsg.room_link], (updateErr, __) => {
-                                            if (!updateErr) {
-                                                emitRoom(pickMsg.room_link);
-                                            } else {
-                                                //sendmessage error update
-                                                console.error(updateErr);
-                                            }
-                                        });
-                                    } else {
-                                        //send message error insert
-                                        console.error(insertErr);
-                                    }
-                                });
+        socket.on("pick", async (pickMsg) => {
+            try {
+                const results = await roomsTable.findOne({
+                    where: {
+                        link: pickMsg.room_link,
+                    },
+                    include: [{
+                        model: pickTable,
+                    },
+                    {
+                        model: joinedTable
+                    }],
+                });
+                if (results) {
+                    if (pickMsg.substitute === true || results.choosing === pickMsg.chooser.pick_order) {
+                        let already_taken = results.pick.map(row => row.pick_id);
+                        if (pickMsg.substitute === true || already_taken.indexOf(pickMsg.pick_id) == -1) {
+                            let newPick = {
+                                room_link: pickMsg.room_link,
+                                username: pickMsg.chooser.username,
+                                pick: pickMsg.pick,
+                                pick_id: pickMsg.pick_id
+                            };
+                            await pickTable.create(newPick);
+                            let flow = results.flow;
+                            let next = results.choosing + flow;
+                            let registered = results.registered;
+                            if (flow == 1) {
+                                if (next >= registered) {
+                                    next = next - 1;
+                                    flow = -1;
+                                }
                             } else {
-                                //send error pick already taken
+                                if (next < 0) {
+                                    next = 0;
+                                    flow = 1;
+                                }
                             }
-                        } else {
-                            //send error not your turn
-                        }
-                    }
-                }
-            })
-        });
-        socket.on("startDraft", ({ room_link, bans, league }) => {
-            db.query("SELECT * FROM joined WHERE room_link=?", room_link, (err, result) => {
-                if (!err) {
-                    if (result) {
-                        result.sort((a, b) => Math.random() - 0.5);
-                        let i = 0;
-                        let promises = [];
-                        for (let user of result) {
-                            promises.push(new Promise((resolve, reject) => {
-                                db.query("UPDATE joined SET pick_order=? WHERE id=?", [i, user.id], (errUp, _) => {
-                                    if (errUp) {
-                                        reject(errUp);
-                                    } else {
-                                        resolve(_);
-                                    }
-                                })
-                            }));
-                            i++;
-                        }
-                        Promise.all(promises).then(() => {
-                            db.query("UPDATE rooms SET started=1, rounds=?, ban_rounds=?, league=? WHERE link=?", [bans.length, bans.reduce((val, turn) => val + (turn ? "1" : "0"), ""), league, room_link], (errStart, _) => {
-                                if (!errStart) {
-                                    emitRoom(room_link);
-                                } else {
-                                    //eventually send socket response
-                                    console.error(errStart);
+                            await roomsTable.update({
+                                flow,
+                                choosing: next,
+                            }, {
+                                where: {
+                                    link: pickMsg.room_link,
                                 }
                             });
-                        });
+                            emitRoom(pickMsg.room_link);
+                        }
                     }
                 }
-            });
-        })
-        socket.on("chatMsg", (chatMsg) => {
-            db.query("INSERT INTO chats SET ?", chatMsg, (err, result) => {
-                if (!err) {
-                    emitChat(chatMsg.room_link);
-                }
-            })
-        })
-        socket.on('disconnect', () => {
-            let room = socket.room_link;
-            if (room) {
-                db.query("UPDATE joined SET online=0 WHERE room_link=? AND username=?", [socket.room_link, socket.username], (err, results) => {
-                    if (!err) {
-                        let i = connectedClients.indexOf(socket);
-                        connectedClients.splice(i, 1);
-                        emitRoom(room);
+            } catch (e) { }
+        });
+        socket.on("startDraft", async ({ room_link, bans, league }) => {
+            try {
+                const joinedPersons = await joinedTable.findAll({
+                    where: {
+                        room_link,
                     }
                 });
+                if (joinedPersons) {
+                    const randomIds = [...Array(joinedPersons.length).keys()]
+                    randomIds.sort(() => Math.random() - .5);
+                    for (let user of joinedPersons) {
+                        user.pick_order = randomIds.pop();
+                    }
+                    joinedTable.bulkCreate(joinedPersons, { updateOnDuplicate: ["pick_order"] });
+                    await roomsTable.update({
+                        started: 1,
+                        rounds: bans.length,
+                        ban_rounds: bans.reduce((val, turn) => val + (turn ? "1" : "0"), ""),
+                        league,
+                    }, {
+                        where: {
+                            link: room_link,
+                        }
+                    });
+                    emitRoom(room_link);
+                }
+            } catch (e) { }
+        })
+        socket.on("chatMsg", async (chatMsg) => {
+            try {
+                await chatTable.create(chatMsg);
+                emitChat(chatMsg.room_link);
+            } catch (e) { }
+        })
+        socket.on('disconnect', async () => {
+            let room = socket.room_link;
+            if (room) {
+                await joinedTable.update({
+                    online: 0,
+                }, {
+                    where: {
+                        room_link: socket.room_link,
+                        username: socket.username,
+                    }
+                });
+                let i = connectedClients.indexOf(socket);
+                connectedClients.splice(i, 1);
+                emitRoom(room);
             }
         });
 
