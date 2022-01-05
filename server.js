@@ -4,7 +4,7 @@ const mysql = require("mysql");
 const path = require('path');
 const httpServer = require("http");
 const crypto = require("crypto");
-const { Server }  = require("socket.io");
+const { Server } = require("socket.io");
 const { instrument } = require("@socket.io/admin-ui");
 const md = require('markdown-it')({
     linkify: true
@@ -37,13 +37,16 @@ nextApp.prepare().then(() => {
         user: process.env.DB_USER,
         password: process.env.DB_PASSWORD,
         database: process.env.DB_NAME,
-        charset: 'utf8mb4'
+        charset: 'utf8mb4',
+        ssl: {
+            rejectUnauthorized: false
+        }
     };
     const handleDisconnect = () => {
         db = mysql.createConnection(dbConfig);
         db.connect((err) => {
             if (err) {
-                console.error(err)
+                console.error(err);
                 setTimeout(handleDisconnect, 2000);
             } else {
                 console.log("Mysql connected...");
@@ -56,7 +59,7 @@ nextApp.prepare().then(() => {
                 console.error(err);
             }
         });
-    }
+    };
 
     handleDisconnect();
 
@@ -72,7 +75,7 @@ nextApp.prepare().then(() => {
                 res.sendStatus(404);
             }
         });
-    }
+    };
 
     const getByLink = (link, res) => {
         db.query(`SELECT * FROM rooms WHERE link=?`, link, (err, result) => {
@@ -86,15 +89,15 @@ nextApp.prepare().then(() => {
                 res.sendStatus(404);
             }
         });
-    }
+    };
 
     const sha256 = (value) => {
-        return crypto.createHash('sha256').update(value).digest('base64')
-    }
+        return crypto.createHash('sha256').update(value).digest('base64');
+    };
 
     const formatName = (name) => {
         return name.toLowerCase().replace(/\s/g, "-");
-    }
+    };
 
     const emitChat = (room_link) => {
         console.log("Emitting chat " + room_link);
@@ -114,11 +117,11 @@ nextApp.prepare().then(() => {
                     msg: msg.msg,
                     eta: msg.timestamp
                     //                eta: `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
-                })
+                });
             }
             io.to(room_link).emit("updateChat", chat);
         });
-    }
+    };
 
     const emitRoom = (room_link) => {
         console.log("Emitting " + room_link);
@@ -162,14 +165,14 @@ nextApp.prepare().then(() => {
                         host: picks.host,
                         pick_order: picks.pick_order,
                         team: baseTeam
-                    })
+                    });
                 }
             }
             room.choosed_list = room.players.flatMap(elem => elem.team).map(elem => elem.pick_id);
             room.players.sort((a, b) => a.pick_order - b.pick_order);
             io.to(room_link).emit("updateRoom", room);
         });
-    }
+    };
 
     let connectedClients = [];
 
@@ -181,7 +184,7 @@ nextApp.prepare().then(() => {
                 password: sha256(joinData.password),
                 room_link: joinData.room,
                 online: true
-            }
+            };
             db.query("SELECT * FROM joined WHERE room_link=? AND username=?", [joined.room_link, joined.username], (err, result) => {
                 if (!err) {
                     if (result.length == 1) {
@@ -234,7 +237,7 @@ nextApp.prepare().then(() => {
                     emitRoom(pickMsg.room_link);
                 }
             });
-        })
+        });
         socket.on("joinRoomSpec", (joinData) => {
             socket.join(joinData.room);
             emitRoom(joinData.room);
@@ -289,7 +292,7 @@ nextApp.prepare().then(() => {
                         }
                     }
                 }
-            })
+            });
         });
         socket.on("startDraft", ({ room_link, bans, league }) => {
             db.query("SELECT * FROM joined WHERE room_link=?", room_link, (err, result) => {
@@ -306,7 +309,7 @@ nextApp.prepare().then(() => {
                                     } else {
                                         resolve(_);
                                     }
-                                })
+                                });
                             }));
                             i++;
                         }
@@ -323,14 +326,14 @@ nextApp.prepare().then(() => {
                     }
                 }
             });
-        })
+        });
         socket.on("chatMsg", (chatMsg) => {
             db.query("INSERT INTO chats SET ?", chatMsg, (err, result) => {
                 if (!err) {
                     emitChat(chatMsg.room_link);
                 }
-            })
-        })
+            });
+        });
         socket.on('disconnect', () => {
             let room = socket.room_link;
             if (room) {
@@ -354,7 +357,7 @@ nextApp.prepare().then(() => {
         req.getByLink = getByLink;
         req.getById = getById;
         return nextHandler(req, res);
-    })
+    });
     app.post("*", (req, res) => {
         req.db = db;
         req.formatName = formatName;
@@ -362,9 +365,9 @@ nextApp.prepare().then(() => {
         req.getByLink = getByLink;
         req.getById = getById;
         return nextHandler(req, res);
-    })
+    });
     http.listen(port, () => console.log("Server is running..."));
-})
+});
 
 instrument(io, {
     auth: {
